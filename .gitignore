@@ -1,0 +1,42 @@
+# CMake
+build/
+out/
+CMakeCache.txt
+CMakeFiles/
+cmake_install.cmake
+*.cmake
+MakeFile
+
+# Visual Studio / VS Code
+.vscode/
+.vs/
+*.sln
+*.vcxproj
+*.vcxproj.user
+*.vcxproj.filters
+*.pdb
+*.iobj
+*.ipdb
+*.tlog
+*.idb
+
+# Output binaries
+*.exe
+*.lib
+*.dll
+*.exp
+*.ilk
+
+# System
+thumbs.db
+.DS_Store
+.clangd
+
+# Logs
+*.log
+build_log.txt
+
+# Dependencies
+vcpkg/
+vcpkg_installed/
+vcpkg_overlays/
