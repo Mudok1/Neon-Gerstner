@@ -8,4 +8,4 @@ This project started as a personal experiment to explore C++ and OpenGL 4.5 capa
 
 A real-time particle simulation utilizing **Gerstner Waves** math to create an oceanic surface that dances to music.
 
-![Final State](/uploaded_image_1768374130786.png)
+![Final State](image1.png)
