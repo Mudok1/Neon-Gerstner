@@ -14,7 +14,6 @@
 #include <thread>
 #include <windows.h>
 
-
 class AudioCapture {
 public:
   AudioCapture();
@@ -55,5 +54,5 @@ private:
   float smoothBass = 0.0f;
   float smoothMids = 0.0f;
   float smoothTreble = 0.0f;
-  static constexpr float SMOOTHING = 0.15f; // Suavizado lento para efecto sutil
+  static constexpr float SMOOTHING = 0.35f; // Faster decay for punchy response
 };

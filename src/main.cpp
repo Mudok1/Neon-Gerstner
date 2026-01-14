@@ -195,8 +195,12 @@ int main() {
     float deltaTime = currentFrameTime - lastFrameTime;
     lastFrameTime = currentFrameTime;
 
-    // Mids control simulation speed boost
-    float speedMultiplier = 1.0f + (audioCapture.getMids() * 2.5f);
+    // Speed modulation: more conservative, with hard cap
+    float audioIntensity =
+        audioCapture.getMids() + (audioCapture.getTreble() * 0.5f);
+    audioIntensity =
+        std::min(audioIntensity, 0.7f); // Cap to prevent excessive speed
+    float speedMultiplier = 1.0f + (audioIntensity * 2.0f);
     accumulatedTime += deltaTime * speedMultiplier;
 
     glUniform1f(timeLoc, accumulatedTime);

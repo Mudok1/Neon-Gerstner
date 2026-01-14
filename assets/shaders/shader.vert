@@ -43,8 +43,9 @@ vec3 gerstnerWave(vec2 pos, float t) {
     vec2 dir1 = normalize(vec2(1.0, 0.5));
     vec2 dir2 = normalize(vec2(-0.7, 1.0));
     
-    // Audio Reactivity (Amplitude)
-    float audioAmp = uBass * 0.15; 
+    // Audio Reactivity (Amplitude) - Simple linear scaling
+    float audioEnergy = (uBass * 0.7) + (uMids * 0.2);
+    float audioAmp = audioEnergy * 0.18;
     float currentAmp = amplitude + audioAmp;
     
     // Onda 1
