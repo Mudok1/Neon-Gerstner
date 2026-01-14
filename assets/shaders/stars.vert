@@ -32,7 +32,7 @@ void main() {
     
     // Star size
     float baseSize = 1.0 + hash(position * 2.0) * 1.0;
-    
+
     // Sparkle effect
     float starId = hash(position * 7.0);
     float sparkThreshold = 0.97 - (uTreble * 0.05); 
