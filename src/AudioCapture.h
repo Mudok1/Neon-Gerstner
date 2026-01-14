@@ -54,5 +54,6 @@ private:
   float smoothBass = 0.0f;
   float smoothMids = 0.0f;
   float smoothTreble = 0.0f;
-  static constexpr float SMOOTHING = 0.35f; // Faster decay for punchy response
+  static constexpr float SMOOTHING =
+      0.15f; // Slower decay for smoother fade-out
 };

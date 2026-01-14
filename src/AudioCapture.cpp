@@ -38,7 +38,7 @@ AudioCapture::AudioCapture() {}
 AudioCapture::~AudioCapture() { stop(); }
 
 bool AudioCapture::initialize() {
-  // La inicialización real ocurre en el thread de captura para COM
+  // Real initialization happens in captureLoop
   return true;
 }
 
@@ -129,17 +129,19 @@ void AudioCapture::captureLoop() {
         break;
 
       if (flags & AUDCLNT_BUFFERFLAGS_SILENT) {
-        // Silencio
+        // Silence detected: Decay values to zero to prevent "stuck" high volume
+        std::lock_guard<std::mutex> lock(dataMutex);
+        smoothBass *= 0.9f;
+        smoothMids *= 0.9f;
+        smoothTreble *= 0.9f;
       } else {
-        // Asumimos formato float estéreo (es lo común en loopback compartido)
-        // waveFormat->nChannels canales
+        // Float stereo loopback format assumed
         float *pFloatData = (float *)pData;
-        size_t samplesToProcess = 1024; // Tamaño ventana FFT
+        size_t samplesToProcess = 1024;
 
-        // Buffer temporal para FFT
         static std::vector<float> fftBuffer;
 
-        // Mezclar canales a mono y acumular
+        // Downmix to mono and accumulate
         int channels = waveFormat->nChannels;
         for (UINT32 i = 0; i < numFramesAvailable; i++) {
           float sample = 0;
@@ -191,17 +193,14 @@ void AudioCapture::applyFFT(const float *data, size_t samples) {
   // Ejecutar FFT
   fft(complexData);
 
-  // Analizar bandas
-  // Sample rate típico 44100 o 48000 Hz
-  // FreqIndex = Index * SampleRate / N
-  // Con N=1024, SampleRate=48000:
-  // Bin width = 46.8 Hz
+  // Analyze bands
+  // Bin width = 46.8 Hz (at 48kHz sample rate, N=1024)
 
   float currentBass = 0.0f;
   float currentMids = 0.0f;
   float currentTreble = 0.0f;
 
-  // Rangos aproximados bins
+  // Approximate bins
   // Bass: 0 - 5 (0 - ~250Hz)
   // Mids: 6 - 40 (~250Hz - ~2000Hz)
   // Treble: 41 - 250 (~2000Hz - ~12000Hz)
@@ -217,10 +216,11 @@ void AudioCapture::applyFFT(const float *data, size_t samples) {
       currentTreble += magnitude;
   }
 
-  // Normalizar un poco (valores empíricos para visualización)
-  currentBass /= 100.0f;
-  currentMids /= 200.0f;
-  currentTreble /= 300.0f;
+  // Normalize values (empirical)
+  // Increased divisors to prevent saturation at 100% volume
+  currentBass /= 150.0f;
+  currentMids /= 250.0f;
+  currentTreble /= 400.0f;
 
   // Clamp 0-1
   currentBass = std::min(1.0f, currentBass);
@@ -230,7 +230,7 @@ void AudioCapture::applyFFT(const float *data, size_t samples) {
   // Update thread-safe values with smoothing
   std::lock_guard<std::mutex> lock(dataMutex);
 
-  // Attack rápido, decay lento
+  // Fast attack, slow decay
   if (currentBass > smoothBass)
     smoothBass = currentBass;
   else

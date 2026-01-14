@@ -1,7 +1,5 @@
-/*
- * Neon Gerstner - Visualizador de Ondas con Bloom
- * Particulas animadas con ecuacion de Gerstner y efecto glow
- */
+// Neon Gerstner Pulse
+// Gerstner Wave Visualization with Bloom & Audio Reactivity
 
 #include <glad/glad.h>
 #define GLFW_INCLUDE_NONE
@@ -35,6 +33,7 @@ unsigned int createShader(const char *vertexCode, const char *fragmentCode);
 std::vector<float> generateGrid(int size, float spacing);
 void createFramebuffers(unsigned int width, unsigned int height);
 void setupQuad(unsigned int &quadVAO, unsigned int &quadVBO);
+void setupSkybox(unsigned int &skyboxVAO, unsigned int &skyboxVBO);
 
 // Camera
 float cameraDistance = 2.5f;
@@ -104,7 +103,19 @@ int main() {
   unsigned int bloomShader =
       createShader(bloomVertCode.c_str(), bloomFragCode.c_str());
 
-  // === CAPA PRINCIPAL (200x200) ===
+  // Star background shader
+  std::string starVertCode = readFile("shaders/stars.vert");
+  std::string starFragCode = readFile("shaders/stars.frag");
+  unsigned int starShader =
+      createShader(starVertCode.c_str(), starFragCode.c_str());
+
+  // Nebula background shader
+  std::string nebulaVertCode = readFile("shaders/nebula.vert");
+  std::string nebulaFragCode = readFile("shaders/nebula.frag");
+  unsigned int nebulaShader =
+      createShader(nebulaVertCode.c_str(), nebulaFragCode.c_str());
+
+  // Main Layer
   std::vector<float> mainGrid = generateGrid(200, 0.03f);
   int mainCount = 200 * 200;
   unsigned int mainVAO, mainVBO;
@@ -117,7 +128,7 @@ int main() {
   glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 2 * sizeof(float), (void *)0);
   glEnableVertexAttribArray(0);
 
-  // === CAPA CERCANA (300x300) ===
+  // Near Layer
   std::vector<float> nearGrid = generateGrid(300, 0.015f);
   int nearCount = 300 * 300;
   unsigned int nearVAO, nearVBO;
@@ -130,7 +141,7 @@ int main() {
   glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 2 * sizeof(float), (void *)0);
   glEnableVertexAttribArray(0);
 
-  // === CAPA LEJANA (100x100) - MUY ESPACIADA ===
+  // Far Layer
   std::vector<float> farGrid = generateGrid(100, 0.25f);
   int farCount = 100 * 100;
   unsigned int farVAO, farVBO;
@@ -143,14 +154,27 @@ int main() {
   glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 2 * sizeof(float), (void *)0);
   glEnableVertexAttribArray(0);
 
-  std::cout << "Capa principal: " << mainCount << " particulas" << std::endl;
-  std::cout << "Capa cercana: " << nearCount << " particulas" << std::endl;
-  std::cout << "Capa lejana: " << farCount << " particulas" << std::endl;
+  // === STARFIELD BACKGROUND (4900 stars, 4-panel enclosure) ===
+  std::vector<float> starGrid = generateGrid(70, 1.8f); // Denser spacing
+  int starCount = 70 * 70;
+  unsigned int starVAO, starVBO;
+  glGenVertexArrays(1, &starVAO);
+  glGenBuffers(1, &starVBO);
+  glBindVertexArray(starVAO);
+  glBindBuffer(GL_ARRAY_BUFFER, starVBO);
+  glBufferData(GL_ARRAY_BUFFER, starGrid.size() * sizeof(float),
+               starGrid.data(), GL_STATIC_DRAW);
+  glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 2 * sizeof(float), (void *)0);
+  glEnableVertexAttribArray(0);
+  std::cout << "Starfield: " << starCount << " stars" << std::endl;
 
   createFramebuffers(currentWidth, currentHeight);
 
   unsigned int quadVAO, quadVBO;
   setupQuad(quadVAO, quadVBO);
+
+  unsigned int skyboxVAO, skyboxVBO;
+  setupSkybox(skyboxVAO, skyboxVBO);
 
   // Uniforms
   int timeLoc = glGetUniformLocation(particleShader, "time");
@@ -170,6 +194,18 @@ int main() {
   int horizontalLoc = glGetUniformLocation(bloomShader, "horizontal");
   int passTypeLoc = glGetUniformLocation(bloomShader, "passType");
   int bloomStrengthLoc = glGetUniformLocation(bloomShader, "bloomStrength");
+
+  // Star shader uniforms
+  int starTimeLoc = glGetUniformLocation(starShader, "time");
+  int starMvpLoc = glGetUniformLocation(starShader, "mvp");
+  int starBassLoc = glGetUniformLocation(starShader, "uBass");
+  int starTrebleLoc = glGetUniformLocation(starShader, "uTreble");
+
+  // Nebula shader uniforms
+  int nebulaTimeLoc = glGetUniformLocation(nebulaShader, "time");
+  int nebulaBassLoc = glGetUniformLocation(nebulaShader, "uBass");
+  int nebulaMidsLoc = glGetUniformLocation(nebulaShader, "uMids");
+  int nebulaMvpLoc = glGetUniformLocation(nebulaShader, "mvp");
 
   while (!glfwWindowShouldClose(window)) {
     processInput(window);
@@ -195,17 +231,16 @@ int main() {
     float deltaTime = currentFrameTime - lastFrameTime;
     lastFrameTime = currentFrameTime;
 
-    // Speed modulation: more conservative, with hard cap
+    // Speed modulation
     float audioIntensity =
         audioCapture.getMids() + (audioCapture.getTreble() * 0.5f);
-    audioIntensity =
-        std::min(audioIntensity, 0.7f); // Cap to prevent excessive speed
+    audioIntensity = std::min(audioIntensity, 0.7f);
     float speedMultiplier = 1.0f + (audioIntensity * 2.0f);
     accumulatedTime += deltaTime * speedMultiplier;
 
     glUniform1f(timeLoc, accumulatedTime);
 
-    // Pasar datos de audio
+    // Audio uniforms
     float bass = audioCapture.getBass();
     float mids = audioCapture.getMids();
     float treble = audioCapture.getTreble();
@@ -216,9 +251,88 @@ int main() {
 
     glm::mat4 projection = glm::perspective(
         glm::radians(45.0f), (float)currentWidth / (float)currentHeight, 0.1f,
-        100.0f);
+        400.0f);
 
-    // --- CAPA LEJANA ---
+    // Skybox Background
+    glDisable(GL_BLEND);
+    glDepthMask(GL_FALSE);
+    glUseProgram(nebulaShader);
+    glUniform1f(nebulaTimeLoc, accumulatedTime);
+    glUniform1f(nebulaBassLoc, bass);
+    glUniform1f(nebulaMidsLoc, mids);
+    glBindVertexArray(skyboxVAO);
+
+    // Skybox render loop
+    glm::mat4 skyboxModel = glm::mat4(1.0f);
+    skyboxModel =
+        glm::rotate(skyboxModel, cameraAngleX, glm::vec3(1.0f, 0.0f, 0.0f));
+    skyboxModel =
+        glm::rotate(skyboxModel, cameraAngleY, glm::vec3(0.0f, 1.0f, 0.0f));
+    skyboxModel = glm::scale(
+        skyboxModel,
+        glm::vec3(200.0f)); // Large cube to cover frustum (far plane 400)
+    glUniformMatrix4fv(nebulaMvpLoc, 1, GL_FALSE,
+                       glm::value_ptr(projection * skyboxModel));
+    glDrawArrays(GL_TRIANGLES, 0, 36);
+
+    glDepthMask(GL_TRUE);
+    glEnable(GL_BLEND);
+
+    // Starfield Background
+    glUseProgram(starShader);
+    glUniform1f(starTimeLoc, accumulatedTime);
+    glUniform1f(starBassLoc, bass);
+    glUniform1f(starTrebleLoc, treble);
+    glBindVertexArray(starVAO);
+
+    // Starfield grid dimensions
+    float gridHalf = 62.0f;
+    float starDist = gridHalf;
+
+    // Front layer
+    glm::mat4 starView = glm::mat4(1.0f);
+    starView = glm::rotate(starView, cameraAngleX, glm::vec3(1.0f, 0.0f, 0.0f));
+    starView = glm::rotate(starView, cameraAngleY, glm::vec3(0.0f, 1.0f, 0.0f));
+    starView = glm::translate(starView, glm::vec3(0.0f, 0.0f, -starDist));
+    glUniformMatrix4fv(starMvpLoc, 1, GL_FALSE,
+                       glm::value_ptr(projection * starView));
+    glDrawArrays(GL_POINTS, 0, starCount);
+
+    // Back layer
+    starView = glm::mat4(1.0f);
+    starView = glm::rotate(starView, cameraAngleX, glm::vec3(1.0f, 0.0f, 0.0f));
+    starView = glm::rotate(starView, cameraAngleY, glm::vec3(0.0f, 1.0f, 0.0f));
+    starView = glm::translate(starView, glm::vec3(0.0f, 0.0f, starDist));
+    glUniformMatrix4fv(starMvpLoc, 1, GL_FALSE,
+                       glm::value_ptr(projection * starView));
+    glDrawArrays(GL_POINTS, 0, starCount);
+
+    // East layer
+    starView = glm::mat4(1.0f);
+    starView = glm::rotate(starView, cameraAngleX, glm::vec3(1.0f, 0.0f, 0.0f));
+    starView = glm::rotate(starView, cameraAngleY, glm::vec3(0.0f, 1.0f, 0.0f));
+    starView = glm::translate(starView, glm::vec3(starDist, 0.0f, 0.0f));
+    starView = glm::rotate(starView, glm::half_pi<float>(),
+                           glm::vec3(0.0f, 1.0f, 0.0f));
+    glUniformMatrix4fv(starMvpLoc, 1, GL_FALSE,
+                       glm::value_ptr(projection * starView));
+    glDrawArrays(GL_POINTS, 0, starCount);
+
+    // West layer
+    starView = glm::mat4(1.0f);
+    starView = glm::rotate(starView, cameraAngleX, glm::vec3(1.0f, 0.0f, 0.0f));
+    starView = glm::rotate(starView, cameraAngleY, glm::vec3(0.0f, 1.0f, 0.0f));
+    starView = glm::translate(starView, glm::vec3(-starDist, 0.0f, 0.0f));
+    starView = glm::rotate(starView, -glm::half_pi<float>(),
+                           glm::vec3(0.0f, 1.0f, 0.0f));
+    glUniformMatrix4fv(starMvpLoc, 1, GL_FALSE,
+                       glm::value_ptr(projection * starView));
+    glDrawArrays(GL_POINTS, 0, starCount);
+
+    // Render Waves
+    glUseProgram(particleShader);
+
+    // Far Layer
     glm::mat4 farView = glm::mat4(1.0f);
     farView =
         glm::translate(farView, glm::vec3(0.0f, -1.0f, -cameraDistance - 0.5f));
@@ -233,7 +347,7 @@ int main() {
     glBindVertexArray(farVAO);
     glDrawArrays(GL_POINTS, 0, farCount);
 
-    // --- CAPA PRINCIPAL ---
+    // Main Layer
     glm::mat4 mainView = glm::mat4(1.0f);
     mainView = glm::translate(mainView, glm::vec3(0.0f, 0.0f, -cameraDistance));
     mainView = glm::rotate(mainView, cameraAngleX, glm::vec3(1.0f, 0.0f, 0.0f));
@@ -247,7 +361,7 @@ int main() {
     glBindVertexArray(mainVAO);
     glDrawArrays(GL_POINTS, 0, mainCount);
 
-    // --- CAPA CERCANA ---
+    // Near Layer
     glm::mat4 nearView = glm::mat4(1.0f);
     nearView = glm::translate(nearView, glm::vec3(0.0f, 0.3f, -1.2f));
     nearView = glm::rotate(nearView, cameraAngleX, glm::vec3(1.0f, 0.0f, 0.0f));
@@ -261,7 +375,7 @@ int main() {
     glBindVertexArray(nearVAO);
     glDrawArrays(GL_POINTS, 0, nearCount);
 
-    // === BLUR ===
+    // Blur Pass
     glDisable(GL_BLEND);
     glUseProgram(bloomShader);
     glUniform1i(passTypeLoc, 0);
@@ -293,7 +407,7 @@ int main() {
       glDrawArrays(GL_TRIANGLES, 0, 6);
     }
 
-    // === COMBINAR ===
+    // Combine Pass
     glBindFramebuffer(GL_FRAMEBUFFER, 0);
     glViewport(0, 0, currentWidth, currentHeight);
     glClearColor(0.01f, 0.01f, 0.01f, 1.0f);
@@ -482,4 +596,35 @@ unsigned int createShader(const char *vertexCode, const char *fragmentCode) {
   glDeleteShader(fs);
 
   return program;
+}
+
+void setupSkybox(unsigned int &skyboxVAO, unsigned int &skyboxVBO) {
+  float skyboxVertices[] = {
+      // positions
+      -1.0f, 1.0f,  -1.0f, -1.0f, -1.0f, -1.0f, 1.0f,  -1.0f, -1.0f,
+      1.0f,  -1.0f, -1.0f, 1.0f,  1.0f,  -1.0f, -1.0f, 1.0f,  -1.0f,
+
+      -1.0f, -1.0f, 1.0f,  -1.0f, -1.0f, -1.0f, -1.0f, 1.0f,  -1.0f,
+      -1.0f, 1.0f,  -1.0f, -1.0f, 1.0f,  1.0f,  -1.0f, -1.0f, 1.0f,
+
+      1.0f,  -1.0f, -1.0f, 1.0f,  -1.0f, 1.0f,  1.0f,  1.0f,  1.0f,
+      1.0f,  1.0f,  1.0f,  1.0f,  1.0f,  -1.0f, 1.0f,  -1.0f, -1.0f,
+
+      -1.0f, -1.0f, 1.0f,  -1.0f, 1.0f,  1.0f,  1.0f,  1.0f,  1.0f,
+      1.0f,  1.0f,  1.0f,  1.0f,  -1.0f, 1.0f,  -1.0f, -1.0f, 1.0f,
+
+      -1.0f, 1.0f,  -1.0f, 1.0f,  1.0f,  -1.0f, 1.0f,  1.0f,  1.0f,
+      1.0f,  1.0f,  1.0f,  -1.0f, 1.0f,  1.0f,  -1.0f, 1.0f,  -1.0f,
+
+      -1.0f, -1.0f, -1.0f, -1.0f, -1.0f, 1.0f,  1.0f,  -1.0f, -1.0f,
+      1.0f,  -1.0f, -1.0f, -1.0f, -1.0f, 1.0f,  1.0f,  -1.0f, 1.0f};
+
+  glGenVertexArrays(1, &skyboxVAO);
+  glGenBuffers(1, &skyboxVBO);
+  glBindVertexArray(skyboxVAO);
+  glBindBuffer(GL_ARRAY_BUFFER, skyboxVBO);
+  glBufferData(GL_ARRAY_BUFFER, sizeof(skyboxVertices), &skyboxVertices,
+               GL_STATIC_DRAW);
+  glEnableVertexAttribArray(0);
+  glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(float), (void *)0);
 }
